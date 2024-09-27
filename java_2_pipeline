@@ -1,0 +1,74 @@
+pipeline {
+    agent any
+    tools {
+        maven "maven3.9"
+    }
+    
+    parameters {
+        string(name: 'ProjectURL', defaultValue: 'https://github.com/DSokraths/java_sonarqube.git', description: 'Git project URL')
+        string(name: 'Branch', defaultValue: 'main', description: 'Please Select the Branch You Want the Pipeline to run at')
+        string(name: 'CredentialID', defaultValue: 'newgithub', description: 'Please Type the CredentialID for Git Authentication')
+    }
+
+
+
+    stages {
+        stage('Checkout with Credential ID') {
+            steps {
+                script {
+                    git branch: params.Branch,
+                        credentialsId: params.CredentialID,
+                        url: params.ProjectURL
+                }
+            }
+        }
+
+
+
+        stage('Build') {
+            steps {
+                sh 'mvn clean install -DskipTests'
+            }
+        }
+
+        stage('Test') {
+            steps {
+                sh 'mvn test'
+            }
+        }
+
+        stage('Checkstyle Analysis') {
+            steps {
+                sh 'mvn checkstyle:checkstyle'
+            }
+        }
+
+        stage('Sonar Analysis Java') {
+            environment {
+                // SonarQube scanner from Jenkins -> Tools
+                scannerHome = tool 'sonar-checkstyle-6.2'
+            }
+            steps {
+                withSonarQubeEnv('sonar') {
+                    sh '''${scannerHome}/bin/sonar-scanner \
+                        -Dsonar.projectKey=java_2 \
+                        -Dsonar.projectName=java_2 \
+                        -Dsonar.projectVersion=1.0 \
+                        -Dsonar.sources=src/main/java \
+                        -Dsonar.java.binaries=target/classes \
+                        -Dsonar.junit.reportsPaths=target/surefire-reports/ \
+                        -Dsonar.coverage.jacoco.xmlReportsPaths=target/jacoco.exec \
+                        -Dsonar.java.checkstyle.reportPaths=target/checkstyle-result.xml'''
+                }
+            }
+        }
+
+        stage('Quality Gate Java') {
+            steps {
+                timeout(time: 1, unit: 'HOURS') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+    }
+}

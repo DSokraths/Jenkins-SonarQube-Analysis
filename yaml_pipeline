@@ -1,0 +1,52 @@
+pipeline {
+    agent any
+    
+    parameters {
+        
+        string(name: 'ProjectURL', defaultValue: 'https://github.com/DSokraths/sonarqube-analysis-code.git', description: 'Git project URL')
+        string(name: 'Branch', defaultValue: 'main', description: 'Please type the branch you want the pipeline to run')
+        string(name: 'CredentialID', defaultValue: 'newgithub', description: 'Please provide the credential ID for Git authentication')
+    }
+    
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: params.Branch, 
+                credentialsId: params.CredentialID, 
+                url: params.ProjectURL
+            }
+        }
+
+        stage('Sonar Analysis - YAML') {
+            environment {
+                // SonarQube scanner from Jenkins -> Tools
+                scannerHome = tool 'sonar-checkstyle-6.2'
+            }
+            steps {
+                withSonarQubeEnv('sonar') {
+                    sh '''${scannerHome}/bin/sonar-scanner \
+                        -Dsonar.projectKey=yaml \
+                        -Dsonar.projectName=yaml \
+                        -Dsonar.projectVersion=1.0 \
+                        -Dsonar.sources=yaml/ 
+                        '''
+                }
+            }
+        }
+ 
+
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 1, unit: 'HOURS') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs() // Optional: clean workspace after the build
+        }
+    }
+}

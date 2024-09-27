@@ -1,0 +1,64 @@
+pipeline {
+    agent any
+
+    parameters {
+        string(name: 'ProjectURL', defaultValue: 'https://github.com/DSokraths/sonarqube-analysis-code.git', description: 'Git project URL')
+        choice(name: 'Branch', choices: ['main', 'dev', 'prod', 'master'], description: 'Please Select the Branch You Want the Pipeline to run at')
+        string(name: 'CredentialID', defaultValue: 'newgithub', description: 'Please Type the CredentialID for Git Authentication')
+    }
+
+    stages {
+        stage('Checkout with Credential ID') {
+            steps {
+                script {
+                    git branch: params.Branch,
+                        credentialsId: params.CredentialID,
+                        url: params.ProjectURL
+                }
+            }
+        }
+
+  
+
+      stage('Test and Generate LCOV Report') {
+            steps {
+                sh 'echo run tests and generate the LCOV report ' 
+            }
+        }
+
+        stage('Sonar Analysis JavaScript') {
+            environment {
+                // SonarQube Scanner απο το Jenkins -> Tools SonarQube Scanner
+                scannerHome = tool 'sonar-checkstyle-6.2'
+            }
+            // define the analysis parameters
+            steps {
+                withSonarQubeEnv('sonar') {
+                    sh '''${scannerHome}/bin/sonar-scanner \
+                        -Dsonar.projectKey=javascript \
+                        -Dsonar.projectName=javascript \
+                        -Dsonar.projectVersion=1.0 \
+                        -Dsonar.sources=js/ \
+                        -Dsonar.javascript.lcov.reportsPaths=target/reports \
+                    '''
+                }
+            }
+        }
+
+        // Qyality gate. Wait up to 1 hour before exiting.
+        // Ανάλογα με το αποτέλεσμα του quality gate ο κώδικας είτε συνεχίζει είτε σταματάει.
+        stage('Quality Gate') {
+            steps {
+                timeout(time: 1, unit: 'HOURS') {
+                    waitForQualityGate abortPipeline: true
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs() // Optional: clean workspace after the build
+        }
+    }
+}
